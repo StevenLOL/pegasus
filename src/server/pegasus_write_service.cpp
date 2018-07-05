@@ -33,6 +33,10 @@ pegasus_write_service::pegasus_write_service(pegasus_server_impl *server)
                                            COUNTER_TYPE_RATE,
                                            "statistic the qps of MULTI_REMOVE request");
 
+    name = fmt::format("incr_qps@{}", str_gpid);
+    _pfc_incr_qps.init_app_counter(
+        "app.pegasus", name.c_str(), COUNTER_TYPE_RATE, "statistic the qps of INCR request");
+
     name = fmt::format("put_latency@{}", str_gpid);
     _pfc_put_latency.init_app_counter("app.pegasus",
                                       name.c_str(),
@@ -56,6 +60,12 @@ pegasus_write_service::pegasus_write_service(pegasus_server_impl *server)
                                                name.c_str(),
                                                COUNTER_TYPE_NUMBER_PERCENTILES,
                                                "statistic the latency of MULTI_REMOVE request");
+
+    name = fmt::format("incr_latency@{}", str_gpid);
+    _pfc_incr_latency.init_app_counter("app.pegasus",
+                                       name.c_str(),
+                                       COUNTER_TYPE_NUMBER_PERCENTILES,
+                                       "statistic the latency of INCR request");
 }
 
 pegasus_write_service::~pegasus_write_service() = default;
@@ -78,6 +88,16 @@ void pegasus_write_service::multi_remove(int64_t decree,
     _pfc_multi_remove_qps->increment();
     _impl->multi_remove(decree, update, resp);
     _pfc_multi_remove_latency->set(dsn_now_ns() - start_time);
+}
+
+void pegasus_write_service::incr(int64_t decree,
+                                 const dsn::apps::incr_request &update,
+                                 dsn::apps::incr_response &resp)
+{
+    uint64_t start_time = dsn_now_ns();
+    _pfc_incr_qps->increment();
+    _impl->incr(decree, update, resp);
+    _pfc_incr_latency->set(dsn_now_ns() - start_time);
 }
 
 void pegasus_write_service::batch_put(const dsn::apps::update_request &update,

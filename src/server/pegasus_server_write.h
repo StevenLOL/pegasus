@@ -34,6 +34,8 @@ private:
         _write_svc->multi_remove(_decree, rpc.request(), rpc.response());
     }
 
+    void on_incr(incr_rpc &rpc) { _write_svc->incr(_decree, rpc.request(), rpc.response()); }
+
     /// Delay replying for the batched requests until all of them complete.
     int on_batched_writes(dsn_message_t *requests, int count, int64_t decree);
 

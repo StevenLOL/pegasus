@@ -21,7 +21,8 @@ public:
           _primary_address(server->_primary_address),
           _value_schema_version(server->_value_schema_version),
           _db(server->_db),
-          _wt_opts(&server->_wt_opts)
+          _wt_opts(&server->_wt_opts),
+          _rd_opts(&server->_rd_opts)
     {
     }
 
@@ -86,6 +87,76 @@ public:
             resp.count = 0;
         } else {
             resp.count = update.sort_keys.size();
+        }
+    }
+
+    void incr(int64_t decree, const dsn::apps::incr_request &update, dsn::apps::incr_response &resp)
+    {
+        resp.app_id = get_gpid().get_app_id();
+        resp.partition_index = get_gpid().get_partition_index();
+        resp.decree = decree;
+        resp.server = _primary_address;
+
+        rocksdb::Slice skey(update.key.data(), update.key.length());
+        uint32_t expire_ts = 0;
+        std::string raw_value;
+        int64_t new_value = 0;
+        rocksdb::Status status = _db->Get(*_rd_opts, skey, &raw_value);
+        if (status.ok()) {
+            expire_ts = pegasus_extract_expire_ts(_value_schema_version, raw_value);
+            if (check_if_ts_expired(utils::epoch_now(), expire_ts)) {
+                // already timeout, set to 0 before increment, and set expire_ts to 0
+                new_value = update.increment;
+                expire_ts = 0;
+            } else {
+                ::dsn::blob old_value;
+                pegasus_extract_user_data(_value_schema_version, std::move(raw_value), old_value);
+                if (old_value.length() == 0) {
+                    // empty old value, set to 0 before increment
+                    new_value = update.increment;
+                } else {
+                    int64_t old_value_int;
+                    if (!utils::buf2int64(old_value.data(), old_value.length(), old_value_int)) {
+                        derror_f("{}: incr failed: decree = {}, error = {}",
+                                 replica_name(),
+                                 decree,
+                                 "old value is not an integer or out of range");
+                        resp.error = rocksdb::Status::kInvalidArgument;
+                        return;
+                    }
+                    new_value = old_value_int + update.increment;
+                    if ((update.increment > 0 && new_value < old_value_int) ||
+                        (update.increment < 0 && new_value > old_value_int)) {
+                        // new value is out of range, return old value by `new_value'
+                        derror_f("{}: incr failed: decree = {}, error = {}",
+                                 replica_name(),
+                                 decree,
+                                 "new value is out of range");
+                        resp.error = rocksdb::Status::kInvalidArgument;
+                        resp.new_value = old_value_int;
+                        return;
+                    }
+                }
+            }
+        } else if (status.IsNotFound()) {
+            // old value is not found, set to 0 before increment, and set expire_ts to 0
+            new_value = update.increment;
+            expire_ts = 0;
+        } else {
+            // read old value failed
+            derror_rocksdb("get for incr", status.ToString(), "decree: {}", decree);
+            resp.error = status.code();
+            return;
+        }
+
+        resp.error = db_write_batch_put(update.key, std::to_string(new_value), expire_ts);
+        if (resp.error != 0) {
+            return;
+        }
+
+        resp.error = db_write(decree);
+        if (resp.error == 0) {
+            resp.new_value = new_value;
         }
     }
 
@@ -168,6 +239,7 @@ private:
     rocksdb::WriteBatch _batch;
     rocksdb::DB *_db;
     rocksdb::WriteOptions *_wt_opts;
+    rocksdb::ReadOptions *_rd_opts;
 
     pegasus_value_generator _value_generator;
 

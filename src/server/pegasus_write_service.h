@@ -34,6 +34,9 @@ public:
                       const dsn::apps::multi_remove_request &update,
                       dsn::apps::multi_remove_response &resp);
 
+    void
+    incr(int64_t decree, const dsn::apps::incr_request &update, dsn::apps::incr_response &resp);
+
     /// Prepare for batch write.
     void batch_prepare();
 
@@ -69,11 +72,13 @@ private:
     ::dsn::perf_counter_wrapper _pfc_multi_put_qps;
     ::dsn::perf_counter_wrapper _pfc_remove_qps;
     ::dsn::perf_counter_wrapper _pfc_multi_remove_qps;
+    ::dsn::perf_counter_wrapper _pfc_incr_qps;
 
     ::dsn::perf_counter_wrapper _pfc_put_latency;
     ::dsn::perf_counter_wrapper _pfc_multi_put_latency;
     ::dsn::perf_counter_wrapper _pfc_remove_latency;
     ::dsn::perf_counter_wrapper _pfc_multi_remove_latency;
+    ::dsn::perf_counter_wrapper _pfc_incr_latency;
 
     std::vector<::dsn::perf_counter *> _batch_perfcounters;
 };

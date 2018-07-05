@@ -46,6 +46,12 @@ int pegasus_server_write::on_batched_write_requests(dsn_message_t *requests,
         on_multi_remove(rpc);
         return rpc.response().error;
     }
+    if (rpc_code == dsn::apps::RPC_RRDB_RRDB_INCR) {
+        dassert(count == 1, "count = %d", count);
+        auto rpc = incr_rpc::auto_reply(requests[0]);
+        on_incr(rpc);
+        return rpc.response().error;
+    }
 
     return on_batched_writes(requests, count, decree);
 }
@@ -70,7 +76,8 @@ int pegasus_server_write::on_batched_writes(dsn_message_t *requests, int count, 
                 _remove_rpc_batch.emplace_back(std::move(rpc));
             } else {
                 if (rpc_code == dsn::apps::RPC_RRDB_RRDB_MULTI_PUT ||
-                    rpc_code == dsn::apps::RPC_RRDB_RRDB_MULTI_REMOVE) {
+                    rpc_code == dsn::apps::RPC_RRDB_RRDB_MULTI_REMOVE ||
+                    rpc_code == dsn::apps::RPC_RRDB_RRDB_INCR) {
                     dfatal("rpc code not allow batch: %s", rpc_code.to_string());
                 } else {
                     dfatal("rpc code not handled: %s", rpc_code.to_string());
